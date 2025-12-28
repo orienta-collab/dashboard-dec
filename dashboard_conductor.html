@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Panel de Ruta - Conductor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+        
+        /* Floating Controls */
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            gap: 10px;
+        }
+
+        .day-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            background: #f0f0f0;
+            color: #333;
+            transition: all 0.3s ease;
+        }
+        
+        .day-btn.active {
+            background: #007AFF;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,122,255,0.4);
+        }
+
+        /* Bottom Sheet for Stop Details */
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            max-height: 30vh;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .info-panel.active { display: block; }
+        
+        h3 { margin: 0 0 5px 0; color: #333; }
+        p { margin: 5px 0; color: #666; font-size: 14px; }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+            margin-right: 5px;
+        }
+        .badge.carga { background-color: #34C759; } /* Green */
+        .badge.descarga { background-color: #FF3B30; } /* Red */
+        .badge.start { background-color: #007AFF; } /* Blue */
+        
+        .nav-btn {
+            display: block;
+            width: 100%;
+            text-align: center;
+            background: #007AFF;
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            text-decoration: none;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button class="day-btn active" onclick="loadDay(29)">Día 29</button>
+        <button class="day-btn" onclick="loadDay(30)">Día 30</button>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="info-panel" class="info-panel">
+        <h3 id="panel-title">Selecciona una parada</h3>
+        <p id="panel-desc">Toca un marcador en el mapa para ver detalles.</p>
+    </div>
+
+    <script>
+        // Data derived from files
+        const data = {
+            29: [
+                { type: 'start', time: '06:00', name: 'Meaño (Salida)', coords: [42.444, -8.781], desc: 'Salida. Poner temperaturas.' },
+                { type: 'carga', time: '07:00', name: 'Carnicería Lino', coords: [42.69348, -8.04018], desc: 'A GOLADA. Carga de mercancía.' },
+                { type: 'carga', time: '08:00', name: 'JB CAO', coords: [42.899, -8.526], desc: 'Santiago. Via Pasteur 4. Carga Ultracongelada.' },
+                { type: 'carga', time: '09:00', name: 'Matadero de Sar', coords: [42.723, -8.674], desc: 'Dodro. Carga de Mercancía.' },
+                { type: 'carga', time: '10:30', name: 'Legofrut', coords: [42.296, -7.871], desc: 'San Cibrao das Viñas. Carga.' },
+                { type: 'descarga', time: '13:00', name: 'Texas Grill Benavente', coords: [42.00759, -5.66314], desc: 'Benavente. Descarga.' },
+                { type: 'carga', time: '14:00', name: 'Avicola Galocha', coords: [42.022, -5.632], desc: 'San Cristobal de Entreviñas. Finca Esperas. Carga.' },
+                { type: 'descarga', time: '18:00', name: 'Texas Grill Saelices', coords: [39.9168, -2.7982], desc: 'Saelices. Descarga.' },
+                { type: 'descarga', time: '21:00', name: 'Cafetería Staroil Ribarroja', coords: [39.4760, -0.5520], desc: 'Ribarroja. Descarga.' },
+                { type: 'descarga', time: '22:00', name: 'Quarta Torre', coords: [39.4758, -0.3839], desc: 'Valencia. Descarga.' },
+                { type: 'descarga', time: '22:30', name: 'El Mercaet', coords: [39.4736, -0.3789], desc: 'Valencia (Mercado Central). Descarga.' }
+            ],
+            30: [
+                { type: 'start', time: '08:00', name: 'Valencia/Ribarroja (Salida)', coords: [39.4760, -0.5520], desc: 'Activación equipos de frío.' },
+                { type: 'carga', time: '11:00', name: 'Incarlopsa', coords: [40.008, -3.008], desc: 'Tarancón. Recogida de pedido.' },
+                { type: 'descarga', time: '15:00', name: 'Texas Grill Benavente', coords: [42.00759, -5.66314], desc: 'Descarga de mercancía.' },
+                { type: 'carga', time: '16:00', name: 'Avicola Galocha', coords: [42.022, -5.632], desc: 'San Cristobal. Carga.' },
+                { type: 'descarga', time: '18:00', name: 'Texas Grill Lalín', coords: [42.661, -8.113], desc: 'Descarga.' },
+                { type: 'descarga', time: '19:00', name: 'Texas Grill Barbanza', coords: [42.716, -8.700], desc: 'Dodro. Descarga.' },
+                { type: 'start', time: '20:00', name: 'Nave Meaño (Fin)', coords: [42.444, -8.781], desc: 'Estacionamiento. Apagar equipos.' }
+            ]
+        };
+
+        // Initialize Map
+        const map = L.map('map').setView([40.4168, -3.7038], 6); // Spain center
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let currentLayerGroup = L.layerGroup().addTo(map);
+        let polyline = null;
+
+        function loadDay(day) {
+            // Update buttons
+            document.querySelectorAll('.day-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if(btn.innerText.includes(day)) btn.classList.add('active');
+            });
+
+            // Clear map
+            currentLayerGroup.clearLayers();
+            if (polyline) map.removeLayer(polyline);
+
+            const dayData = data[day];
+            const latlngs = [];
+
+            dayData.forEach((stop, index) => {
+                let color = 'blue';
+                let label = (index + 1).toString();
+                if (stop.type === 'carga') color = 'green';
+                if (stop.type === 'descarga') color = 'red';
+
+                // Create custom marker icon
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color:${color}; width:30px; height:30px; border-radius:50%; border:2px solid white; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${label}</div>`,
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
+                });
+
+                const marker = L.marker(stop.coords, {icon: icon}).addTo(currentLayerGroup);
+                latlngs.push(stop.coords);
+
+                marker.on('click', () => {
+                    showPanel(stop);
+                });
+            });
+
+            // Draw route line
+            polyline = L.polyline(latlngs, {color: '#007AFF', weight: 4, opacity: 0.7, dashArray: '10, 10'}).addTo(map);
+            
+            // Fit bounds
+            if (latlngs.length > 0) {
+                map.fitBounds(polyline.getBounds(), {padding: [50, 50]});
+            }
+        }
+
+        function showPanel(stop) {
+            const panel = document.getElementById('info-panel');
+            panel.classList.add('active');
+            
+            let badgeClass = stop.type;
+            let badgeText = stop.type === 'carga' ? 'CARGA' : (stop.type === 'descarga' ? 'DESCARGA' : 'INFO');
+            
+            document.getElementById('panel-title').innerHTML = `
+                <span class="badge ${badgeClass}">${badgeText}</span> ${stop.time} - ${stop.name}
+            `;
+            document.getElementById('panel-desc').innerText = stop.desc;
+            
+            // Add Google Maps link
+            const oldLink = document.getElementById('maps-link');
+            if(oldLink) oldLink.remove();
+            
+            const link = document.createElement('a');
+            link.id = 'maps-link';
+            link.className = 'nav-btn';
+            link.href = `https://www.google.com/maps/dir/?api=1&destination=${stop.coords[0]},${stop.coords[1]}`;
+            link.target = '_blank';
+            link.innerText = '📍 Ir con Google Maps';
+            panel.appendChild(link);
+        }
+
+        // Initialize with Day 29
+        loadDay(29);
+
+    </script>
+</body>
+</html>
